@@ -4,13 +4,21 @@ import { headers } from 'next/headers'
 import { ToastProvider } from '@/lib/toast'
 import { ConfirmProvider } from '@/lib/confirm'
 import ToastContainer from '@/components/ui/Toast'
+import PwaRegister from '@/components/pwa/PwaRegister'
 
 export const metadata: Metadata = {
   title: 'NossosBoletos — Controle de Contas Simples',
   description: 'Gerencie suas contas a pagar de forma simples e compartilhada.',
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: '/icon.svg',
     shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'NossosBoletos',
   },
 }
 
@@ -23,6 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR" className="scroll-smooth">
       <body className="min-h-screen font-sans">
+        <PwaRegister />
         <ToastProvider>
           <ConfirmProvider>
             {children}

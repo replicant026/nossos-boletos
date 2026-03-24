@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Bill, CATEGORIES } from '@/lib/types'
 import { useSupabase } from '@/lib/supabase-context'
 import Modal from './Modal'
@@ -8,22 +8,49 @@ import { useToast } from '@/lib/toast'
 import { useConfirm } from '@/lib/confirm'
 
 interface Props {
-  bill: Bill | null  // null = create new
+  bill: Bill | null
   householdId: string
   onClose: () => void
   onSaved: () => void
+  defaultYear?: number
+  defaultMonth?: number
 }
 
-export default function BillFormModal({ bill, householdId, onClose, onSaved }: Props) {
+function getDefaultStartDate(defaultYear?: number, defaultMonth?: number): string {
+  if (
+    typeof defaultYear === 'number' &&
+    Number.isInteger(defaultYear) &&
+    typeof defaultMonth === 'number' &&
+    Number.isInteger(defaultMonth) &&
+    defaultMonth >= 0 &&
+    defaultMonth <= 11
+  ) {
+    return `${defaultYear}-${String(defaultMonth + 1).padStart(2, '0')}-01`
+  }
+
+  return new Date().toISOString().slice(0, 10)
+}
+
+export default function BillFormModal({
+  bill,
+  householdId,
+  onClose,
+  onSaved,
+  defaultYear,
+  defaultMonth,
+}: Props) {
   const supabase = useSupabase()
   const { toast } = useToast()
   const { confirm } = useConfirm()
+
+  const [isOneOff, setIsOneOff] = useState(false)
+  const [recurringType, setRecurringType] = useState<'monthly' | 'yearly'>('monthly')
+
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [dueDay, setDueDay] = useState('10')
   const [category, setCategory] = useState('Outros')
-  const [recurrence, setRecurrence] = useState<'once' | 'monthly' | 'yearly'>('monthly')
-  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10))
+  const [startDate, setStartDate] = useState(getDefaultStartDate(defaultYear, defaultMonth))
   const [endDate, setEndDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -34,33 +61,49 @@ export default function BillFormModal({ bill, householdId, onClose, onSaved }: P
       setAmount(bill.amount.toString())
       setDueDay(bill.due_day.toString())
       setCategory(bill.category)
-      setRecurrence(bill.recurrence)
       setStartDate(bill.start_date)
       setEndDate(bill.end_date || '')
-    } else {
-      setName('')
-      setAmount('')
-      setDueDay('10')
-      setCategory('Outros')
-      setRecurrence('monthly')
-      setStartDate(new Date().toISOString().slice(0, 10))
-      setEndDate('')
+
+      if (bill.recurrence === 'once') {
+        setIsOneOff(true)
+        setRecurringType('monthly')
+      } else {
+        setIsOneOff(false)
+        setRecurringType(bill.recurrence)
+      }
+      return
     }
-  }, [bill])
+
+    setIsOneOff(false)
+    setRecurringType('monthly')
+    setName('')
+    setAmount('')
+    setDueDay('10')
+    setCategory('Outros')
+    setStartDate(getDefaultStartDate(defaultYear, defaultMonth))
+    setEndDate('')
+  }, [bill, defaultYear, defaultMonth])
 
   async function handleSave() {
     if (!name.trim() || !amount) return
     setSaving(true)
 
+    const parsedAmount = parseFloat(amount)
+    const parsedDueDay = Math.max(1, Math.min(31, parseInt(dueDay, 10) || 1))
+    const startDateObj = new Date(`${startDate}T00:00:00`)
+    const oneOffDueDay = Number.isNaN(startDateObj.getTime())
+      ? parsedDueDay
+      : startDateObj.getDate()
+
     const data = {
       household_id: householdId,
       name: name.trim(),
-      amount: parseFloat(amount),
-      due_day: parseInt(dueDay),
+      amount: parsedAmount,
+      due_day: isOneOff ? oneOffDueDay : parsedDueDay,
       category,
-      recurrence,
+      recurrence: isOneOff ? ('once' as const) : recurringType,
       start_date: startDate,
-      end_date: endDate || null,
+      end_date: isOneOff ? null : (endDate || null),
     }
 
     let error
@@ -90,6 +133,7 @@ export default function BillFormModal({ bill, householdId, onClose, onSaved }: P
       danger: true,
     })
     if (!ok) return
+
     setDeleting(true)
     const { error } = await supabase.from('bills').delete().eq('id', bill.id)
     if (error) {
@@ -97,18 +141,69 @@ export default function BillFormModal({ bill, householdId, onClose, onSaved }: P
       setDeleting(false)
       return
     }
-    toast('Conta excluída', 'success')
+
+    toast('Conta excluida', 'success')
     onSaved()
     onClose()
   }
 
   return (
-    <Modal
-      open={true}
-      onClose={onClose}
-      title={bill ? 'Editar Conta' : 'Nova Conta'}
-    >
+    <Modal open={true} onClose={onClose} title={bill ? 'Editar Conta' : 'Nova Conta'}>
       <div className="space-y-4">
+        <div>
+          <label className="label">Tipo</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setIsOneOff(false)}
+              className={`py-2.5 rounded-xl text-sm font-medium transition-all border ${
+                !isOneOff
+                  ? 'bg-brand-50 border-brand-500 text-brand-700'
+                  : 'bg-white border-surface-200 text-surface-600 hover:bg-surface-50'
+              }`}
+            >
+              Recorrente
+            </button>
+            <button
+              onClick={() => setIsOneOff(true)}
+              className={`py-2.5 rounded-xl text-sm font-medium transition-all border ${
+                isOneOff
+                  ? 'bg-brand-50 border-brand-500 text-brand-700'
+                  : 'bg-white border-surface-200 text-surface-600 hover:bg-surface-50'
+              }`}
+            >
+              Unica
+            </button>
+          </div>
+        </div>
+
+        {!isOneOff && (
+          <div>
+            <label className="label">Recorrencia</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setRecurringType('monthly')}
+                className={`py-2.5 rounded-xl text-sm font-medium transition-all border ${
+                  recurringType === 'monthly'
+                    ? 'bg-brand-50 border-brand-500 text-brand-700'
+                    : 'bg-white border-surface-200 text-surface-600 hover:bg-surface-50'
+                }`}
+              >
+                Mensal
+              </button>
+              <button
+                onClick={() => setRecurringType('yearly')}
+                className={`py-2.5 rounded-xl text-sm font-medium transition-all border ${
+                  recurringType === 'yearly'
+                    ? 'bg-brand-50 border-brand-500 text-brand-700'
+                    : 'bg-white border-surface-200 text-surface-600 hover:bg-surface-50'
+                }`}
+              >
+                Anual
+              </button>
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="label">Nome da conta *</label>
           <input
@@ -120,7 +215,7 @@ export default function BillFormModal({ bill, householdId, onClose, onSaved }: P
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className={`grid gap-3 ${isOneOff ? 'grid-cols-1' : 'grid-cols-2'}`}>
           <div>
             <label className="label">Valor (R$) *</label>
             <input
@@ -132,17 +227,20 @@ export default function BillFormModal({ bill, householdId, onClose, onSaved }: P
               onChange={e => setAmount(e.target.value)}
             />
           </div>
-          <div>
-            <label className="label">Dia do vencimento *</label>
-            <input
-              type="number"
-              min="1"
-              max="31"
-              className="input"
-              value={dueDay}
-              onChange={e => setDueDay(e.target.value)}
-            />
-          </div>
+
+          {!isOneOff && (
+            <div>
+              <label className="label">Dia do vencimento *</label>
+              <input
+                type="number"
+                min="1"
+                max="31"
+                className="input"
+                value={dueDay}
+                onChange={e => setDueDay(e.target.value)}
+              />
+            </div>
+          )}
         </div>
 
         <div>
@@ -165,32 +263,9 @@ export default function BillFormModal({ bill, householdId, onClose, onSaved }: P
           </div>
         </div>
 
-        <div>
-          <label className="label">Recorrência</label>
-          <div className="flex gap-2">
-            {[
-              { v: 'monthly' as const, l: 'Mensal' },
-              { v: 'yearly' as const, l: 'Anual' },
-              { v: 'once' as const, l: 'Única' },
-            ].map(r => (
-              <button
-                key={r.v}
-                onClick={() => setRecurrence(r.v)}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all border ${
-                  recurrence === r.v
-                    ? 'bg-brand-50 border-brand-500 text-brand-700'
-                    : 'bg-white border-surface-200 text-surface-600 hover:bg-surface-50'
-                }`}
-              >
-                {r.l}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
+        <div className={`grid gap-3 ${isOneOff ? 'grid-cols-1' : 'grid-cols-2'}`}>
           <div>
-            <label className="label">Início</label>
+            <label className="label">{isOneOff ? 'Data' : 'Inicio'}</label>
             <input
               type="date"
               className="input"
@@ -198,15 +273,18 @@ export default function BillFormModal({ bill, householdId, onClose, onSaved }: P
               onChange={e => setStartDate(e.target.value)}
             />
           </div>
-          <div>
-            <label className="label">Fim (opcional)</label>
-            <input
-              type="date"
-              className="input"
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-            />
-          </div>
+
+          {!isOneOff && (
+            <div>
+              <label className="label">Fim (opcional)</label>
+              <input
+                type="date"
+                className="input"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3 pt-2">
@@ -219,12 +297,13 @@ export default function BillFormModal({ bill, householdId, onClose, onSaved }: P
               {deleting ? '...' : 'Excluir'}
             </button>
           )}
+
           <button
             onClick={handleSave}
             disabled={saving || !name.trim() || !amount}
             className="btn-primary flex-1 disabled:opacity-50"
           >
-            {saving ? 'Salvando...' : bill ? 'Salvar Alterações' : 'Criar Conta'}
+            {saving ? 'Salvando...' : bill ? 'Salvar Alteracoes' : 'Criar Conta'}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useSupabase } from '@/lib/supabase-context'
 import { Household } from '@/lib/types'
+import PwaInstallCard from '@/components/pwa/PwaInstallCard'
 
 const QRCodeSVG = dynamic(
   () => import('qrcode.react').then(mod => mod.QRCodeSVG),
@@ -294,6 +295,8 @@ export default function TabGrupo({ household, onUpdated }: Props) {
             </button>
           </div>
         </div>
+
+        <PwaInstallCard />
 
         {/* Zona de perigo — linha completa */}
         <div className="md:col-span-2 lg:col-span-3 border border-red-100 rounded-2xl overflow-hidden">

@@ -26,7 +26,7 @@ import TopTabs from '@/components/nav/TopTabs'
 const RECURRENCE_LABEL: Record<string, string> = {
   monthly: 'Mensal',
   yearly:  'Anual',
-  once:    'Única vez',
+  once:    'Unica',
 }
 
 function TabContas({
@@ -475,6 +475,17 @@ export default function DashboardPage() {
         />
       )}
 
+      {editingBill === null && (
+        <button
+          onClick={() => setEditingBill('new')}
+          className="fixed right-4 bottom-24 md:bottom-6 z-30 w-11 h-11 rounded-full border border-surface-200 bg-white/95 text-surface-600 shadow-sm hover:bg-white hover:text-brand-600 transition-colors"
+          title="Adicionar conta"
+          aria-label="Adicionar conta"
+        >
+          +
+        </button>
+      )}
+
       {/* Bottom Nav mobile */}
       <BottomNav active={activeTab} onChange={setActiveTab} />
 
@@ -492,6 +503,8 @@ export default function DashboardPage() {
         <BillFormModal
           bill={editingBill === 'new' ? null : editingBill}
           householdId={household.id}
+          defaultYear={year}
+          defaultMonth={month}
           onClose={() => setEditingBill(null)}
           onSaved={fetchData}
         />
